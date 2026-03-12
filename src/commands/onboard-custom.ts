@@ -5,6 +5,11 @@ import { OLLAMA_DEFAULT_BASE_URL } from "../agents/ollama-models.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ModelProviderConfig } from "../config/types.models.js";
 import { isSecretRef, type SecretInput } from "../config/types.secrets.js";
+import {
+  isAzureOpenAiUrl,
+  normalizeAzureOpenAiBaseUrl,
+  resolveAzureOpenAiEndpointUrl,
+} from "../providers/azure-openai.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { fetchWithTimeout } from "../utils/fetch-timeout.js";
 import {
@@ -24,41 +29,6 @@ const VERIFY_TIMEOUT_MS = 30_000;
 function normalizeContextWindowForCustomModel(value: unknown): number {
   const parsed = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : 0;
   return parsed >= CONTEXT_WINDOW_HARD_MIN_TOKENS ? parsed : CONTEXT_WINDOW_HARD_MIN_TOKENS;
-}
-
-/**
- * Detects if a URL is from Azure AI Foundry or Azure OpenAI.
- * Matches both:
- * - https://*.services.ai.azure.com (Azure AI Foundry)
- * - https://*.openai.azure.com (classic Azure OpenAI)
- */
-function isAzureUrl(baseUrl: string): boolean {
-  try {
-    const url = new URL(baseUrl);
-    const host = url.hostname.toLowerCase();
-    return host.endsWith(".services.ai.azure.com") || host.endsWith(".openai.azure.com");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Transforms an Azure AI Foundry/OpenAI URL to include the deployment path.
- * Azure requires: https://host/openai/deployments/<model-id>/chat/completions?api-version=2024-xx-xx-preview
- * But we can't add query params here, so we just add the path prefix.
- * The api-version will be handled by the Azure OpenAI client or as a query param.
- *
- * Example:
- *   https://my-resource.services.ai.azure.com + gpt-5-nano
- *   => https://my-resource.services.ai.azure.com/openai/deployments/gpt-5-nano
- */
-function transformAzureUrl(baseUrl: string, modelId: string): string {
-  const normalizedUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  // Check if the URL already includes the deployment path
-  if (normalizedUrl.includes("/openai/deployments/")) {
-    return normalizedUrl;
-  }
-  return `${normalizedUrl}/openai/deployments/${modelId}`;
 }
 
 export type CustomApiCompatibility = "openai" | "anthropic";
@@ -277,17 +247,20 @@ function resolveVerificationEndpoint(params: {
   baseUrl: string;
   modelId: string;
   endpointPath: "chat/completions" | "messages";
+  apiVersion?: string;
 }) {
-  const resolvedUrl = isAzureUrl(params.baseUrl)
-    ? transformAzureUrl(params.baseUrl, params.modelId)
-    : params.baseUrl;
+  if (isAzureOpenAiUrl(params.baseUrl)) {
+    return resolveAzureOpenAiEndpointUrl({
+      baseUrl: params.baseUrl,
+      modelId: params.modelId,
+      endpointPath: params.endpointPath,
+      apiVersion: params.apiVersion,
+    });
+  }
   const endpointUrl = new URL(
     params.endpointPath,
-    resolvedUrl.endsWith("/") ? resolvedUrl : `${resolvedUrl}/`,
+    params.baseUrl.endsWith("/") ? params.baseUrl : `${params.baseUrl}/`,
   );
-  if (isAzureUrl(params.baseUrl)) {
-    endpointUrl.searchParams.set("api-version", "2024-10-21");
-  }
   return endpointUrl.href;
 }
 
@@ -319,13 +292,15 @@ async function requestOpenAiVerification(params: {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  apiVersion?: string;
 }): Promise<VerificationResult> {
   const endpoint = resolveVerificationEndpoint({
     baseUrl: params.baseUrl,
     modelId: params.modelId,
     endpointPath: "chat/completions",
+    apiVersion: params.apiVersion,
   });
-  const isBaseUrlAzureUrl = isAzureUrl(params.baseUrl);
+  const isBaseUrlAzureUrl = isAzureOpenAiUrl(params.baseUrl);
   const headers = isBaseUrlAzureUrl
     ? buildAzureOpenAiHeaders(params.apiKey)
     : buildOpenAiHeaders(params.apiKey);
@@ -572,8 +547,10 @@ export function applyCustomApiConfig(params: ApplyCustomApiConfigParams): Custom
     throw new CustomApiError("invalid_model_id", "Custom provider model ID is required.");
   }
 
-  // Transform Azure URLs to include the deployment path for API calls
-  const resolvedBaseUrl = isAzureUrl(baseUrl) ? transformAzureUrl(baseUrl, modelId) : baseUrl;
+  const isAzureOpenAi = params.compatibility === "openai" && isAzureOpenAiUrl(baseUrl);
+  const resolvedBaseUrl = isAzureOpenAi
+    ? normalizeAzureOpenAiBaseUrl({ baseUrl, modelId })
+    : baseUrl;
 
   const providerIdResult = resolveCustomProviderId({
     config: params.config,
@@ -632,6 +609,11 @@ export function applyCustomApiConfig(params: ApplyCustomApiConfigParams): Custom
           ...existingProviderRest,
           baseUrl: resolvedBaseUrl,
           api: resolveProviderApi(params.compatibility),
+          // Azure OpenAI custom providers use api-key auth semantics by default.
+          ...(isAzureOpenAi && !existingProviderRest.auth ? { auth: "api-key" as const } : {}),
+          ...(isAzureOpenAi && !existingProviderRest.azureApiVersion
+            ? { azureApiVersion: params.config.models?.azureOpenAiApiVersion }
+            : {}),
           ...(normalizedApiKey ? { apiKey: normalizedApiKey } : {}),
           models: mergedModels.length > 0 ? mergedModels : [nextModel],
         },
@@ -708,6 +690,7 @@ export async function promptCustomApiConfig(params: {
         baseUrl,
         apiKey: resolvedApiKey,
         modelId,
+        apiVersion: config.models?.azureOpenAiApiVersion,
       });
       if (openaiProbe.ok) {
         probeSpinner.stop("Detected OpenAI-compatible endpoint.");
@@ -750,7 +733,12 @@ export async function promptCustomApiConfig(params: {
     const result =
       compatibility === "anthropic"
         ? await requestAnthropicVerification({ baseUrl, apiKey: resolvedApiKey, modelId })
-        : await requestOpenAiVerification({ baseUrl, apiKey: resolvedApiKey, modelId });
+        : await requestOpenAiVerification({
+            baseUrl,
+            apiKey: resolvedApiKey,
+            modelId,
+            apiVersion: config.models?.azureOpenAiApiVersion,
+          });
     if (result.ok) {
       verifySpinner.stop("Verification successful.");
       break;

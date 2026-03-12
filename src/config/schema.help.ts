@@ -705,6 +705,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Model catalog root for provider definitions, merge/replace behavior, and optional Bedrock discovery integration. Keep provider definitions explicit and validated before relying on production failover paths.",
   "models.mode":
     'Controls provider catalog behavior: "merge" keeps built-ins and overlays your custom providers, while "replace" uses only your configured providers. In "merge", matching provider IDs preserve non-empty agent models.json baseUrl values, while apiKey values are preserved only when the provider is not SecretRef-managed in current config/auth-profile context; SecretRef-managed providers refresh apiKey from current source markers, and matching model contextWindow/maxTokens use the higher value between explicit and implicit entries.',
+  "models.azureOpenAiApiVersion":
+    "Default API version used when probing or normalizing Azure OpenAI deployment endpoints (for example 2024-10-21). Provider-level azureApiVersion overrides this value.",
   "models.providers":
     "Provider map keyed by provider ID containing connection/auth settings and concrete model definitions. Use stable provider keys so references from agents and tooling remain portable across environments.",
   "models.providers.*.baseUrl":
@@ -713,6 +715,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Provider credential used for API-key based authentication when the provider requires direct key auth. Use secret/env substitution and avoid storing real keys in committed config files.",
   "models.providers.*.auth":
     'Selects provider auth style: "api-key" for API key auth, "token" for bearer token auth, "oauth" for OAuth credentials, and "aws-sdk" for AWS credential resolution. Match this to your provider requirements.',
+  "models.providers.*.azureApiVersion":
+    "Optional Azure OpenAI API version override for this provider. Use when the endpoint requires a specific `api-version` query value for deployment-style routes.",
   "models.providers.*.api":
     "Provider API adapter selection controlling request/response compatibility handling for model calls. Use the adapter that matches your upstream provider protocol to avoid feature mismatch.",
   "models.providers.*.injectNumCtxForOpenAICompat":

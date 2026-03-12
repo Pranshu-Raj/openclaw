@@ -231,6 +231,7 @@ export const ModelProviderSchema = z
     auth: z
       .union([z.literal("api-key"), z.literal("aws-sdk"), z.literal("oauth"), z.literal("token")])
       .optional(),
+    azureApiVersion: z.string().optional(),
     api: ModelApiSchema.optional(),
     injectNumCtxForOpenAICompat: z.boolean().optional(),
     headers: z.record(z.string(), SecretInputSchema.register(sensitive)).optional(),
@@ -254,6 +255,7 @@ export const BedrockDiscoverySchema = z
 export const ModelsConfigSchema = z
   .object({
     mode: z.union([z.literal("merge"), z.literal("replace")]).optional(),
+    azureOpenAiApiVersion: z.string().optional(),
     providers: z.record(z.string(), ModelProviderSchema).optional(),
     bedrockDiscovery: BedrockDiscoverySchema,
   })
