@@ -27,11 +27,11 @@ type InlineProviderConfig = {
 };
 
 function resolveRuntimeBaseUrl(params: {
-  baseUrl: string | undefined;
+  baseUrl: string;
   modelId: string;
-  api: ModelDefinitionConfig["api"] | undefined;
-}): string | undefined {
-  if (!params.baseUrl) {
+  api: Api | undefined;
+}): string {
+  if (!params.baseUrl.trim()) {
     return params.baseUrl;
   }
   const isOpenAiCompatibleApi =
@@ -123,7 +123,7 @@ function applyConfiguredProviderOverrides(params: {
 
   const resolvedApi = configuredModel?.api ?? providerConfig.api ?? discoveredModel.api;
   const resolvedBaseUrl = resolveRuntimeBaseUrl({
-    baseUrl: providerConfig.baseUrl ?? discoveredModel.baseUrl,
+    baseUrl: providerConfig.baseUrl ?? discoveredModel.baseUrl ?? "",
     modelId,
     api: resolvedApi,
   });
@@ -165,7 +165,7 @@ export function buildInlineProviderModels(
       provider: trimmed,
       api: model.api ?? entry?.api,
       baseUrl: resolveRuntimeBaseUrl({
-        baseUrl: entry?.baseUrl,
+        baseUrl: entry?.baseUrl ?? "",
         modelId: model.id,
         api: model.api ?? entry?.api,
       }),
@@ -261,7 +261,7 @@ export function resolveModelWithRegistry(params: {
   if (providerConfig || modelId.startsWith("mock-")) {
     const fallbackApi = providerConfig?.api ?? "openai-responses";
     const fallbackBaseUrl = resolveRuntimeBaseUrl({
-      baseUrl: providerConfig?.baseUrl,
+      baseUrl: providerConfig?.baseUrl ?? "",
       modelId,
       api: fallbackApi,
     });

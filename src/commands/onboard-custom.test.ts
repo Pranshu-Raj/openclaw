@@ -484,7 +484,17 @@ describe("applyCustomApiConfig", () => {
               baseUrl: "https://my-resource.openai.azure.com/openai/deployments/old-model",
               auth: "token",
               api: "openai-completions",
-              models: [makeModel("old-model")],
+              models: [
+                {
+                  id: "old-model",
+                  name: "old-model",
+                  contextWindow: CONTEXT_WINDOW_HARD_MIN_TOKENS,
+                  maxTokens: 1024,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  reasoning: false,
+                },
+              ],
             },
           },
         },
