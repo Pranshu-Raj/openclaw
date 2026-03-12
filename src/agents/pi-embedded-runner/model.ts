@@ -2,6 +2,7 @@ import type { Api, Model } from "@mariozechner/pi-ai";
 import type { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { ModelDefinitionConfig } from "../../config/types.js";
+import { isAzureOpenAiUrl, normalizeAzureOpenAiBaseUrl } from "../../providers/azure-openai.js";
 import { resolveOpenClawAgentDir } from "../agent-paths.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { buildModelAliasLines } from "../model-alias-lines.js";
@@ -18,10 +19,31 @@ type InlineModelEntry = ModelDefinitionConfig & {
 };
 type InlineProviderConfig = {
   baseUrl?: string;
+  auth?: "api-key" | "aws-sdk" | "oauth" | "token";
+  azureApiVersion?: string;
   api?: ModelDefinitionConfig["api"];
   models?: ModelDefinitionConfig[];
   headers?: unknown;
 };
+
+function resolveRuntimeBaseUrl(params: {
+  baseUrl: string | undefined;
+  modelId: string;
+  api: ModelDefinitionConfig["api"] | undefined;
+}): string | undefined {
+  if (!params.baseUrl) {
+    return params.baseUrl;
+  }
+  const isOpenAiCompatibleApi =
+    params.api === "openai-completions" || params.api === "openai-responses";
+  if (!isOpenAiCompatibleApi || !isAzureOpenAiUrl(params.baseUrl)) {
+    return params.baseUrl;
+  }
+  return normalizeAzureOpenAiBaseUrl({
+    baseUrl: params.baseUrl,
+    modelId: params.modelId,
+  });
+}
 
 function sanitizeModelHeaders(
   headers: unknown,
@@ -99,10 +121,17 @@ function applyConfiguredProviderOverrides(params: {
       ? resolvedInput.filter((item) => item === "text" || item === "image")
       : (["text"] as Array<"text" | "image">);
 
+  const resolvedApi = configuredModel?.api ?? providerConfig.api ?? discoveredModel.api;
+  const resolvedBaseUrl = resolveRuntimeBaseUrl({
+    baseUrl: providerConfig.baseUrl ?? discoveredModel.baseUrl,
+    modelId,
+    api: resolvedApi,
+  });
+
   return {
     ...discoveredModel,
-    api: configuredModel?.api ?? providerConfig.api ?? discoveredModel.api,
-    baseUrl: providerConfig.baseUrl ?? discoveredModel.baseUrl,
+    api: resolvedApi,
+    baseUrl: resolvedBaseUrl,
     reasoning: configuredModel?.reasoning ?? discoveredModel.reasoning,
     input: normalizedInput,
     cost: configuredModel?.cost ?? discoveredModel.cost,
@@ -134,8 +163,12 @@ export function buildInlineProviderModels(
     return (entry?.models ?? []).map((model) => ({
       ...model,
       provider: trimmed,
-      baseUrl: entry?.baseUrl,
       api: model.api ?? entry?.api,
+      baseUrl: resolveRuntimeBaseUrl({
+        baseUrl: entry?.baseUrl,
+        modelId: model.id,
+        api: model.api ?? entry?.api,
+      }),
       headers: (() => {
         const modelHeaders = sanitizeModelHeaders((model as InlineModelEntry).headers, {
           stripSecretRefMarkers: true,
@@ -226,14 +259,20 @@ export function resolveModelWithRegistry(params: {
     stripSecretRefMarkers: true,
   });
   if (providerConfig || modelId.startsWith("mock-")) {
+    const fallbackApi = providerConfig?.api ?? "openai-responses";
+    const fallbackBaseUrl = resolveRuntimeBaseUrl({
+      baseUrl: providerConfig?.baseUrl,
+      modelId,
+      api: fallbackApi,
+    });
     return normalizeResolvedModel({
       provider,
       model: {
         id: modelId,
         name: modelId,
-        api: providerConfig?.api ?? "openai-responses",
+        api: fallbackApi,
         provider,
-        baseUrl: providerConfig?.baseUrl,
+        baseUrl: fallbackBaseUrl,
         reasoning: configuredModel?.reasoning ?? false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

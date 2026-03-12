@@ -227,6 +227,32 @@ describe("promptCustomApiConfig", () => {
     expect(parsedBody).not.toHaveProperty("max_tokens");
   });
 
+  it("uses configured azure API version for verification probes", async () => {
+    const prompter = createTestPrompter({
+      text: [
+        "https://my-resource.openai.azure.com",
+        "azure-test-key",
+        "gpt-4.1",
+        "custom",
+        "alias",
+      ],
+      select: ["plaintext", "openai"],
+    });
+    const fetchMock = stubFetchSequence([{ ok: true }]);
+
+    await runPromptCustomApi(prompter, {
+      models: {
+        azureOpenAiApiVersion: "2025-01-01-preview",
+      },
+    });
+
+    const firstUrl = fetchMock.mock.calls[0]?.[0];
+    if (typeof firstUrl !== "string") {
+      throw new Error("Expected first verification call URL");
+    }
+    expect(firstUrl).toContain("api-version=2025-01-01-preview");
+  });
+
   it("uses expanded max_tokens for anthropic verification probes", async () => {
     const prompter = createTestPrompter({
       text: ["https://example.com", "test-key", "detected-model", "custom", "alias"],
@@ -431,6 +457,45 @@ describe("applyCustomApiConfig", () => {
     },
   ])("rejects $name", ({ params, expectedMessage }) => {
     expect(() => applyCustomApiConfig(params)).toThrow(expectedMessage);
+  });
+
+  it("defaults Azure OpenAI custom providers to api-key auth", () => {
+    const result = applyCustomApiConfig({
+      config: {} as OpenClawConfig,
+      baseUrl: "https://my-resource.openai.azure.com",
+      modelId: "gpt-4.1",
+      compatibility: "openai",
+      apiKey: "azure-test-key",
+      providerId: "custom",
+    });
+
+    expect(result.config.models?.providers?.custom?.auth).toBe("api-key");
+    expect(result.config.models?.providers?.custom?.baseUrl).toContain(
+      "/openai/deployments/gpt-4.1",
+    );
+  });
+
+  it("preserves explicit auth mode for existing Azure providers", () => {
+    const result = applyCustomApiConfig({
+      config: {
+        models: {
+          providers: {
+            custom: {
+              baseUrl: "https://my-resource.openai.azure.com/openai/deployments/old-model",
+              auth: "token",
+              api: "openai-completions",
+              models: [makeModel("old-model")],
+            },
+          },
+        },
+      } as OpenClawConfig,
+      baseUrl: "https://my-resource.openai.azure.com",
+      modelId: "gpt-4.1",
+      compatibility: "openai",
+      providerId: "custom",
+    });
+
+    expect(result.config.models?.providers?.custom?.auth).toBe("token");
   });
 });
 

@@ -257,6 +257,44 @@ describe("resolveModel", () => {
     expect(result.model?.id).toBe("missing-model");
   });
 
+  it("normalizes Azure provider baseUrl to deployment path for runtime fallback models", () => {
+    const cfg = {
+      models: {
+        providers: {
+          custom: {
+            baseUrl: "https://my-resource.openai.azure.com",
+            api: "openai-completions",
+            models: [],
+          },
+        },
+      },
+    } as OpenClawConfig;
+
+    const result = resolveModel("custom", "gpt-4.1", "/tmp/agent", cfg);
+
+    expect(result.model?.baseUrl).toBe(
+      "https://my-resource.openai.azure.com/openai/deployments/gpt-4.1",
+    );
+  });
+
+  it("keeps Azure /openai/v1 provider baseUrl unchanged for runtime fallback models", () => {
+    const cfg = {
+      models: {
+        providers: {
+          custom: {
+            baseUrl: "https://my-resource.openai.azure.com/openai/v1",
+            api: "openai-completions",
+            models: [],
+          },
+        },
+      },
+    } as OpenClawConfig;
+
+    const result = resolveModel("custom", "gpt-4.1", "/tmp/agent", cfg);
+
+    expect(result.model?.baseUrl).toBe("https://my-resource.openai.azure.com/openai/v1");
+  });
+
   it("includes provider headers in provider fallback model", () => {
     const cfg = {
       models: {

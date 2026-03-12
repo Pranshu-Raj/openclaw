@@ -425,9 +425,11 @@ export const FIELD_LABELS: Record<string, string> = {
   models: "Models",
   "models.mode": "Model Catalog Mode",
   "models.providers": "Model Providers",
+  "models.azureOpenAiApiVersion": "Models Azure OpenAI API Version",
   "models.providers.*.baseUrl": "Model Provider Base URL",
   "models.providers.*.apiKey": "Model Provider API Key", // pragma: allowlist secret
   "models.providers.*.auth": "Model Provider Auth Mode",
+  "models.providers.*.azureApiVersion": "Model Provider Azure OpenAI API Version",
   "models.providers.*.api": "Model Provider API Adapter",
   "models.providers.*.injectNumCtxForOpenAICompat": "Model Provider Inject num_ctx (OpenAI Compat)",
   "models.providers.*.headers": "Model Provider Headers",

@@ -243,3 +243,50 @@ Direct OpenAI Responses models still force `store: true` unless compat sets
 
 - Model refs always use `provider/model` (see [/concepts/models](/concepts/models)).
 - Auth details + reuse rules are in [/concepts/oauth](/concepts/oauth).
+
+## Azure OpenAI with custom providers
+
+If you use Azure OpenAI through the custom provider flow (`openclaw onboard` with
+`custom-api-key`), OpenClaw now supports Azure host URLs directly:
+
+- `https://<resource>.openai.azure.com`
+- `https://<resource>.services.ai.azure.com`
+
+Runtime behavior:
+
+- For deployment-style Azure endpoints, OpenClaw normalizes base URLs to
+  `/openai/deployments/<model-id>`.
+- For Azure OpenAI v1 endpoints (`/openai/v1`), OpenClaw keeps your base URL as-is.
+- Azure custom providers default to `api-key` auth mode unless you explicitly set
+  another auth mode.
+
+Optional API version config:
+
+```json5
+{
+  models: {
+    // Global default for Azure deployment-style endpoint probing/normalization
+    azureOpenAiApiVersion: "2024-10-21",
+    providers: {
+      "my-azure": {
+        baseUrl: "https://my-resource.openai.azure.com",
+        auth: "api-key",
+        // Optional per-provider override
+        azureApiVersion: "2024-10-21",
+        api: "openai-completions",
+        models: [
+          {
+            id: "gpt-4.1",
+            name: "gpt-4.1",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 128000,
+            maxTokens: 4096,
+          },
+        ],
+      },
+    },
+  },
+}
+```

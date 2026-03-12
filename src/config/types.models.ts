@@ -53,6 +53,7 @@ export type ModelProviderConfig = {
   baseUrl: string;
   apiKey?: SecretInput;
   auth?: ModelProviderAuthMode;
+  azureApiVersion?: string;
   api?: ModelApi;
   injectNumCtxForOpenAICompat?: boolean;
   headers?: Record<string, SecretInput>;
@@ -71,6 +72,7 @@ export type BedrockDiscoveryConfig = {
 
 export type ModelsConfig = {
   mode?: "merge" | "replace";
+  azureOpenAiApiVersion?: string;
   providers?: Record<string, ModelProviderConfig>;
   bedrockDiscovery?: BedrockDiscoveryConfig;
 };
